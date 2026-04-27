@@ -1,0 +1,7 @@
+# large artifacts
+matchmaker_saved.h5
+data.zip
+data/
+*.h5
+__pycache__/
+.venv/

@@ -1,0 +1,152 @@
+[
+  {
+    "pair_overlap": 260,
+    "drug_overlap": 57,
+    "cell_overlap": 30,
+    "n_train": 2276,
+    "n_test": 710,
+    "split": "lto",
+    "seed": 42,
+    "folder": "splits/lto/seed_42"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 57,
+    "cell_overlap": 30,
+    "n_train": 2271,
+    "n_test": 716,
+    "split": "lpo",
+    "seed": 42,
+    "folder": "splits/lpo/seed_42"
+  },
+  {
+    "pair_overlap": 268,
+    "drug_overlap": 26,
+    "cell_overlap": 0,
+    "n_train": 1973,
+    "n_test": 1088,
+    "split": "lco",
+    "seed": 42,
+    "folder": "splits/lco/seed_42"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 46,
+    "cell_overlap": 30,
+    "n_train": 1881,
+    "n_test": 1105,
+    "split": "lodo",
+    "seed": 42,
+    "folder": "splits/lodo/seed_42"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 0,
+    "cell_overlap": 29,
+    "n_train": 1881,
+    "n_test": 98,
+    "split": "ldo",
+    "seed": 42,
+    "folder": "splits/ldo/seed_42"
+  },
+  {
+    "pair_overlap": 260,
+    "drug_overlap": 57,
+    "cell_overlap": 30,
+    "n_train": 2276,
+    "n_test": 710,
+    "split": "lto",
+    "seed": 43,
+    "folder": "splits/lto/seed_43"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 57,
+    "cell_overlap": 30,
+    "n_train": 2302,
+    "n_test": 677,
+    "split": "lpo",
+    "seed": 43,
+    "folder": "splits/lpo/seed_43"
+  },
+  {
+    "pair_overlap": 237,
+    "drug_overlap": 26,
+    "cell_overlap": 0,
+    "n_train": 2431,
+    "n_test": 516,
+    "split": "lco",
+    "seed": 43,
+    "folder": "splits/lco/seed_43"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 46,
+    "cell_overlap": 30,
+    "n_train": 2015,
+    "n_test": 970,
+    "split": "lodo",
+    "seed": 43,
+    "folder": "splits/lodo/seed_43"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 0,
+    "cell_overlap": 23,
+    "n_train": 2015,
+    "n_test": 66,
+    "split": "ldo",
+    "seed": 43,
+    "folder": "splits/ldo/seed_43"
+  },
+  {
+    "pair_overlap": 255,
+    "drug_overlap": 57,
+    "cell_overlap": 30,
+    "n_train": 2276,
+    "n_test": 710,
+    "split": "lto",
+    "seed": 44,
+    "folder": "splits/lto/seed_44"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 57,
+    "cell_overlap": 30,
+    "n_train": 2334,
+    "n_test": 637,
+    "split": "lpo",
+    "seed": 44,
+    "folder": "splits/lpo/seed_44"
+  },
+  {
+    "pair_overlap": 258,
+    "drug_overlap": 26,
+    "cell_overlap": 0,
+    "n_train": 2405,
+    "n_test": 548,
+    "split": "lco",
+    "seed": 44,
+    "folder": "splits/lco/seed_44"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 46,
+    "cell_overlap": 30,
+    "n_train": 1476,
+    "n_test": 1442,
+    "split": "lodo",
+    "seed": 44,
+    "folder": "splits/lodo/seed_44"
+  },
+  {
+    "pair_overlap": 0,
+    "drug_overlap": 0,
+    "cell_overlap": 29,
+    "n_train": 1476,
+    "n_test": 268,
+    "split": "ldo",
+    "seed": 44,
+    "folder": "splits/ldo/seed_44"
+  }
+]
