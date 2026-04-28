@@ -1,5 +1,6 @@
 import os
 import argparse
+import random
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -8,6 +9,13 @@ import MatchMaker as MatchMaker
 import performance_metrics
 
 from sklearn.model_selection import KFold
+
+try:
+    import wandb
+
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
 
 # -------------------- Args --------------------
 parser = argparse.ArgumentParser(description='MatchMaker training / evaluation')
@@ -31,7 +39,6 @@ parser.add_argument('--test-ind', default='data/test_inds.txt')
 parser.add_argument('--arch', default='architecture.txt')
 parser.add_argument('--saved-model-name', default="matchmaker.h5")
 
-# NEW: splitting controls
 parser.add_argument('--split-mode', default='files', choices=['files', 'random', 'kfold'],
                     help="files: use *_inds.txt, random: make one split, kfold: cross-validation")
 parser.add_argument('--split', nargs=3, type=float, default=[0.6, 0.2, 0.2],
@@ -39,7 +46,6 @@ parser.add_argument('--split', nargs=3, type=float, default=[0.6, 0.2, 0.2],
 parser.add_argument('--seed', type=int, default=42)
 parser.add_argument('--kfolds', type=int, default=10)
 
-# NEW: optional final fit (train on train+val) for random split
 parser.add_argument('--final-fit', action='store_true',
                     help="After choosing hyperparams, fit on train+val and evaluate on test (random mode)")
 
@@ -48,14 +54,36 @@ parser.add_argument('--use-trainval', action='store_true',
 parser.add_argument('--tiny-val-frac', type=float, default=0.1,
                     help="Fraction of trainval to hold out as tiny validation when --use-trainval is set.")
 
-# NEW: where to write results
 parser.add_argument('--outdir', default='results')
 parser.add_argument('--classification-label-column', default='',
                     help='Optional binary label column for classification metrics (e.g. synergy_binary)')
 parser.add_argument('--classification-threshold', type=float, default=0.0,
                     help='Threshold applied to regression prediction for F1. AUC/AUPRC use score directly.')
 
+parser.add_argument('--norm', default='minmax', choices=['minmax', 'tanh_norm', 'norm', 'tanh'],
+                    help='Feature scaling: minmax (per-block) or legacy tanh_norm / norm / tanh.')
+parser.add_argument('--weight-mode', default='uniform', choices=['uniform', 'q3_upweight', 'log'],
+                    help='MSE sample weights: uniform, q3 upweight (Arda-style), or log (legacy).')
+parser.add_argument('--weight-alpha', type=float, default=3.0,
+                    help='Strength for q3_upweight (max weight ≈ 1 + alpha).')
+
+parser.add_argument('--lr', type=float, default=1e-4)
+parser.add_argument('--input-dropout', type=float, default=0.2)
+parser.add_argument('--dropout', type=float, default=0.5)
+parser.add_argument('--batch-size', type=int, default=128)
+parser.add_argument('--max-epoch', type=int, default=1000)
+parser.add_argument('--earlystop', type=int, default=100)
+
+parser.add_argument('--use-wandb', action='store_true')
+parser.add_argument('--wandb-project', default='matchmaker-pdac')
+parser.add_argument('--wandb-run-name', default=None)
+
 args = parser.parse_args()
+
+os.environ["PYTHONHASHSEED"] = str(args.seed)
+random.seed(args.seed)
+np.random.seed(args.seed)
+tf.random.set_seed(args.seed)
 
 
 # -------------------- TF/GPU config --------------------
@@ -108,25 +136,77 @@ layers = {
     'SPN': architecture['SPN'][0],
 }
 
-# -------------------- Constant hyperparams (you can tune later) --------------------
-l_rate = 0.0001
-inDrop = 0.2
-drop = 0.5
-max_epoch = 1000
-batch_size = 128
-earlyStop_patience = 100
+l_rate = args.lr
+inDrop = args.input_dropout
+drop = args.dropout
+max_epoch = args.max_epoch
+batch_size = args.batch_size
+earlyStop_patience = args.earlystop
+norm = args.norm
 
-norm = 'tanh_norm'
+use_wandb = args.use_wandb and WANDB_AVAILABLE
+if args.use_wandb and not WANDB_AVAILABLE:
+    print("W&B requested but not installed; continuing without W&B.")
 
-def make_loss_weight(train_y: np.ndarray) -> np.ndarray:
-    """Sample weights for MSE; must be finite (NaN here -> nan loss)."""
-    y = np.asarray(train_y, dtype=np.float64).reshape(-1)
-    if np.any(~np.isfinite(y)):
-        y = np.nan_to_num(y, nan=np.nanmedian(y[np.isfinite(y)]) if np.any(np.isfinite(y)) else 0.0)
-    min_s = float(np.min(y))
-    w = np.log(np.maximum(y - min_s, 0.0) + np.e)
-    w = np.where(np.isfinite(w), w, 1.0)
-    return w
+if use_wandb:
+    wandb.init(
+        project=args.wandb_project,
+        name=args.wandb_run_name,
+        config={
+            "seed": args.seed,
+            "norm": norm,
+            "split_mode": args.split_mode,
+            "split": args.split,
+            "kfolds": args.kfolds,
+            "lr": l_rate,
+            "weight_mode": args.weight_mode,
+            "weight_alpha": args.weight_alpha,
+            "input_dropout": inDrop,
+            "dropout": drop,
+            "batch_size": batch_size,
+            "max_epoch": max_epoch,
+            "earlystop": earlyStop_patience,
+            "label_column": args.label_column,
+            "comb_data_name": args.comb_data_name,
+            "arch_DSN_1": layers["DSN_1"],
+            "arch_DSN_2": layers["DSN_2"],
+            "arch_SPN": layers["SPN"],
+            "n_samples": int(N),
+        },
+    )
+
+
+def make_loss_weight(train_y: np.ndarray, mode="uniform", alpha=3.0):
+    train_y = np.asarray(train_y, dtype=np.float64).reshape(-1)
+
+    if mode == "uniform":
+        return np.ones_like(train_y, dtype=np.float64)
+
+    if mode == "log":
+        y = train_y.copy()
+        if np.any(~np.isfinite(y)):
+            y = np.nan_to_num(y, nan=np.nanmedian(y[np.isfinite(y)]) if np.any(np.isfinite(y)) else 0.0)
+        min_s = float(np.min(y))
+        w = np.log(np.maximum(y - min_s, 0.0) + np.e)
+        w = np.where(np.isfinite(w), w, 1.0)
+        return w
+
+    if mode == "q3_upweight":
+        y = np.nan_to_num(train_y, nan=0.0, posinf=1e6, neginf=-1e6).astype(np.float32)
+        q3 = np.quantile(y, 0.75)
+        max_y = np.max(y)
+        denom = max(max_y - q3, 1e-8)
+        weights = np.ones_like(y, dtype=np.float64)
+        mask = y > q3
+        weights[mask] = 1.0 + alpha * ((y[mask] - q3) / denom)
+        weights = np.nan_to_num(weights, nan=1.0, posinf=10.0, neginf=1.0)
+        weights = np.clip(weights, 1.0, 1.0 + alpha)
+        print("[Weighting] mode=q3_upweight, q3={:.6f}, alpha={}".format(q3, alpha))
+        print("[Weighting] min={:.4f}, mean={:.4f}, max={:.4f}".format(
+            weights.min(), weights.mean(), weights.max()))
+        return weights
+
+    raise ValueError("Unknown weight-mode: {}".format(mode))
 
 def evaluate_model(model, test_data, test_idx=None, tag=""):
     # Predict in Drug1, Drug2 order
@@ -171,19 +251,19 @@ def run_one_split(train_idx, val_idx, test_idx, run_tag):
         chem1, chem2, cell_line, synergies, norm, tmp_train, tmp_val, tmp_test
     )
 
-    loss_weight = make_loss_weight(train_data['y'])
+    loss_weight = make_loss_weight(
+        train_data['y'], mode=args.weight_mode, alpha=args.weight_alpha)
 
     model = MatchMaker.generate_network(train_data, layers, inDrop, drop)
+    model_path = os.path.join(args.outdir, "{}_{}".format(run_tag, args.saved_model_name))
 
     if args.train_test_mode == 1:
         model = MatchMaker.trainer(
             model, l_rate, train_data, val_data,
             max_epoch, batch_size, earlyStop_patience,
-            args.saved_model_name, loss_weight
-        )
+            model_path, loss_weight, use_wandb)
 
-    # Always load best weights before evaluation
-    model.load_weights(args.saved_model_name)
+    model.load_weights(model_path)
 
     metrics = evaluate_model(model, test_data, test_idx=test_idx, tag=run_tag)
     pred_path = os.path.join(args.outdir, "pred_{}.csv".format(run_tag))
@@ -210,7 +290,7 @@ if args.split_mode == "files":
         trainval_idx = np.unique(np.concatenate([train_idx, val_idx]))
 
         # create a tiny validation split from trainval for early stopping
-        rng = np.random.default_rng(42)
+        rng = np.random.default_rng(args.seed)
         tv = trainval_idx.copy()
         rng.shuffle(tv)
 
@@ -237,17 +317,18 @@ if args.split_mode == "files":
             args.train_ind, args.val_ind, args.test_ind
         )
 
-    loss_weight = make_loss_weight(train_data['y'])
+    loss_weight = make_loss_weight(
+        train_data['y'], mode=args.weight_mode, alpha=args.weight_alpha)
     model = MatchMaker.generate_network(train_data, layers, inDrop, drop)
+    model_path = os.path.join(args.outdir, args.saved_model_name)
 
     if args.train_test_mode == 1:
         model = MatchMaker.trainer(
             model, l_rate, train_data, val_data,
             max_epoch, batch_size, earlyStop_patience,
-            args.saved_model_name, loss_weight
-        )
+            model_path, loss_weight, use_wandb)
 
-    model.load_weights(args.saved_model_name)
+    model.load_weights(model_path)
     test_idx = np.loadtxt(args.test_ind, dtype=int)
     metrics = evaluate_model(model, test_data, test_idx=test_idx, tag="files_split")
     results.append(metrics)
@@ -307,3 +388,6 @@ out_csv = os.path.join(args.outdir, "results.csv")
 df_res.to_csv(out_csv, index=False)
 print("Saved results to:", out_csv)
 print(df_res)
+
+if use_wandb:
+    wandb.finish()

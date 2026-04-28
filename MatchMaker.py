@@ -27,50 +27,104 @@ def data_loader(drug1_chemicals,drug2_chemicals,cell_line_gex,comb_data_name,lab
 def prepare_data(chem1, chem2, cell_line, synergies, norm, train_ind_fname, val_ind_fname, test_ind_fname):
     print("Data normalization and preparation of train/validation/test data")
     test_ind = list(np.loadtxt(test_ind_fname, dtype=int))
-    val_ind = list(np.loadtxt(val_ind_fname,dtype=int))
-    train_ind = list(np.loadtxt(train_ind_fname,dtype=int))
+    val_ind = list(np.loadtxt(val_ind_fname, dtype=int))
+    train_ind = list(np.loadtxt(train_ind_fname, dtype=int))
 
     train_data = {}
     val_data = {}
     test_data = {}
-    train1 = np.concatenate((chem1[train_ind,:],chem2[train_ind,:]),axis=0)
-    train_data['drug1'], mean1, std1, mean2, std2, feat_filt = normalize(train1, norm=norm)
-    val_data['drug1'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(chem1[val_ind,:],mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm)
-    test_data['drug1'], mean1, std1, mean2, std2, feat_filt = normalize(chem1[test_ind,:],mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm)
-    train2 = np.concatenate((chem2[train_ind,:],chem1[train_ind,:]),axis=0)
-    train_data['drug2'], mean1, std1, mean2, std2, feat_filt = normalize(train2, norm=norm)
-    val_data['drug2'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(chem2[val_ind,:],mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm)
-    test_data['drug2'], mean1, std1, mean2, std2, feat_filt = normalize(chem2[test_ind,:],mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm)
 
-    train3 = np.concatenate((cell_line[train_ind,:],cell_line[train_ind,:]),axis=0)
-    train_cell_line, mean1, std1, mean2, std2, feat_filt = normalize(train3, norm=norm)
-    val_cell_line, mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(cell_line[val_ind,:],mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm)
-    test_cell_line, mean1, std1, mean2, std2, feat_filt = normalize(cell_line[test_ind,:],mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm)
-    train_data['drug1'] = np.concatenate((train_data['drug1'],train_cell_line),axis=1)
-    train_data['drug2'] = np.concatenate((train_data['drug2'],train_cell_line),axis=1)
+    if norm == "minmax":
+        train1 = np.concatenate((chem1[train_ind, :], chem2[train_ind, :]), axis=0)
+        train_data['drug1'], mins1, maxs1, feat_filt1 = normalize(train1, norm='minmax')
+        val_data['drug1'], _, _, _ = normalize(
+            chem1[val_ind, :], norm='minmax', mins=mins1, maxs=maxs1, feat_filt=feat_filt1
+        )
+        test_data['drug1'], _, _, _ = normalize(
+            chem1[test_ind, :], norm='minmax', mins=mins1, maxs=maxs1, feat_filt=feat_filt1
+        )
 
-    val_data['drug1'] = np.concatenate((val_data['drug1'],val_cell_line),axis=1)
-    val_data['drug2'] = np.concatenate((val_data['drug2'],val_cell_line),axis=1)
+        train2 = np.concatenate((chem2[train_ind, :], chem1[train_ind, :]), axis=0)
+        train_data['drug2'], mins2, maxs2, feat_filt2 = normalize(train2, norm='minmax')
+        val_data['drug2'], _, _, _ = normalize(
+            chem2[val_ind, :], norm='minmax', mins=mins2, maxs=maxs2, feat_filt=feat_filt2
+        )
+        test_data['drug2'], _, _, _ = normalize(
+            chem2[test_ind, :], norm='minmax', mins=mins2, maxs=maxs2, feat_filt=feat_filt2
+        )
 
-    test_data['drug1'] = np.concatenate((test_data['drug1'],test_cell_line),axis=1)
-    test_data['drug2'] = np.concatenate((test_data['drug2'],test_cell_line),axis=1)
+        train3 = np.concatenate((cell_line[train_ind, :], cell_line[train_ind, :]), axis=0)
+        train_cell_line, mins3, maxs3, feat_filt3 = normalize(train3, norm='minmax')
+        val_cell_line, _, _, _ = normalize(
+            cell_line[val_ind, :], norm='minmax', mins=mins3, maxs=maxs3, feat_filt=feat_filt3
+        )
+        test_cell_line, _, _, _ = normalize(
+            cell_line[test_ind, :], norm='minmax', mins=mins3, maxs=maxs3, feat_filt=feat_filt3
+        )
+    else:
+        train1 = np.concatenate((chem1[train_ind, :], chem2[train_ind, :]), axis=0)
+        train_data['drug1'], mean1, std1, mean2, std2, feat_filt = normalize(train1, norm=norm)
+        val_data['drug1'], _, _, _, _, _ = normalize(
+            chem1[val_ind, :], mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm
+        )
+        test_data['drug1'], _, _, _, _, _ = normalize(
+            chem1[test_ind, :], mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm
+        )
 
-    train_data['y'] = np.concatenate((synergies[train_ind],synergies[train_ind]),axis=0)
+        train2 = np.concatenate((chem2[train_ind, :], chem1[train_ind, :]), axis=0)
+        train_data['drug2'], mean1, std1, mean2, std2, feat_filt = normalize(train2, norm=norm)
+        val_data['drug2'], _, _, _, _, _ = normalize(
+            chem2[val_ind, :], mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm
+        )
+        test_data['drug2'], _, _, _, _, _ = normalize(
+            chem2[test_ind, :], mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm
+        )
+
+        train3 = np.concatenate((cell_line[train_ind, :], cell_line[train_ind, :]), axis=0)
+        train_cell_line, mean1, std1, mean2, std2, feat_filt = normalize(train3, norm=norm)
+        val_cell_line, _, _, _, _, _ = normalize(
+            cell_line[val_ind, :], mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm
+        )
+        test_cell_line, _, _, _, _, _ = normalize(
+            cell_line[test_ind, :], mean1, std1, mean2, std2, feat_filt=feat_filt, norm=norm
+        )
+
+    train_data['drug1'] = np.concatenate((train_data['drug1'], train_cell_line), axis=1)
+    train_data['drug2'] = np.concatenate((train_data['drug2'], train_cell_line), axis=1)
+    val_data['drug1'] = np.concatenate((val_data['drug1'], val_cell_line), axis=1)
+    val_data['drug2'] = np.concatenate((val_data['drug2'], val_cell_line), axis=1)
+    test_data['drug1'] = np.concatenate((test_data['drug1'], test_cell_line), axis=1)
+    test_data['drug2'] = np.concatenate((test_data['drug2'], test_cell_line), axis=1)
+
+    train_data['y'] = np.concatenate((synergies[train_ind], synergies[train_ind]), axis=0)
     val_data['y'] = synergies[val_ind]
     test_data['y'] = synergies[test_ind]
-    # Final safety: keep tensors finite for stable optimization.
-    for key in ["drug1", "drug2", "y"]:
-        train_data[key] = np.nan_to_num(train_data[key], nan=0.0, posinf=0.0, neginf=0.0)
-        val_data[key] = np.nan_to_num(val_data[key], nan=0.0, posinf=0.0, neginf=0.0)
-        test_data[key] = np.nan_to_num(test_data[key], nan=0.0, posinf=0.0, neginf=0.0)
+
+    if norm == "minmax":
+        for split_data in (train_data, val_data, test_data):
+            split_data["drug1"] = np.nan_to_num(
+                split_data["drug1"], nan=0.0, posinf=1.0, neginf=0.0
+            ).astype(np.float32)
+            split_data["drug2"] = np.nan_to_num(
+                split_data["drug2"], nan=0.0, posinf=1.0, neginf=0.0
+            ).astype(np.float32)
+            split_data["y"] = np.nan_to_num(
+                split_data["y"], nan=0.0, posinf=1e6, neginf=-1e6
+            ).astype(np.float32)
+    else:
+        for key in ("drug1", "drug2", "y"):
+            train_data[key] = np.nan_to_num(train_data[key], nan=0.0, posinf=0.0, neginf=0.0)
+            val_data[key] = np.nan_to_num(val_data[key], nan=0.0, posinf=0.0, neginf=0.0)
+            test_data[key] = np.nan_to_num(test_data[key], nan=0.0, posinf=0.0, neginf=0.0)
+
     print(test_data['drug1'].shape)
     print(test_data['drug2'].shape)
     return train_data, val_data, test_data
 
 def generate_network(train, layers, inDrop, drop):
     # fill the architecture params from dict
-    dsn1_layers = layers["DSN_1"].split("-")
-    dsn2_layers = layers["DSN_2"].split("-")
+    dsn1_layers = str(layers["DSN_1"]).split("-")
+    dsn2_layers = str(layers["DSN_2"]).split("-")
     snp_layers = layers["SPN"].split("-")
     # contruct two parallel networks
     for l in range(len(dsn1_layers)):
@@ -116,8 +170,7 @@ def generate_network(train, layers, inDrop, drop):
     model = Model([input_drug1, input_drug2], snp_output)
     return model
 
-def trainer(model, l_rate, train, val, epo, batch_size, earlyStop, modelName,weights):
-    # Final defensive cleanup before fit.
+def trainer(model, l_rate, train, val, epo, batch_size, earlyStop, modelName, weights, use_wandb=False):
     train_x1 = np.nan_to_num(train["drug1"], nan=0.0, posinf=0.0, neginf=0.0)
     train_x2 = np.nan_to_num(train["drug2"], nan=0.0, posinf=0.0, neginf=0.0)
     train_y = np.nan_to_num(train["y"], nan=0.0, posinf=0.0, neginf=0.0)
@@ -129,20 +182,37 @@ def trainer(model, l_rate, train, val, epo, batch_size, earlyStop, modelName,wei
     if w.shape[0] != train_y.shape[0]:
         w = np.ones(train_y.shape[0], dtype=np.float64)
     w = np.nan_to_num(w, nan=1.0, posinf=1.0, neginf=1.0)
-    # Keep weights bounded to avoid unstable gradients.
     w = np.clip(w, 0.1, 10.0).astype(np.float32)
 
-    cb_check = ModelCheckpoint((modelName), verbose=1, monitor='val_loss',save_best_only=True, mode='auto')
+    callbacks = [
+        EarlyStopping(monitor='val_loss', mode='auto', patience=earlyStop),
+        ModelCheckpoint(modelName, verbose=1, monitor='val_loss', save_best_only=True, mode='auto'),
+        TerminateOnNaN(),
+    ]
+    if use_wandb:
+        try:
+            from wandb.integration.keras import WandbMetricsLogger
+
+            callbacks.append(WandbMetricsLogger(log_freq="epoch"))
+        except Exception:
+            pass
+
     model.compile(
         loss='mean_squared_error',
         optimizer=keras.optimizers.Adam(
             learning_rate=float(l_rate), beta_1=0.9, beta_2=0.999, amsgrad=False, clipnorm=1.0
-        )
+        ),
     )
     model.fit(
-        [train_x1, train_x2], train_y, epochs=epo, shuffle=True, batch_size=batch_size, verbose=1,
-        validation_data=([val_x1, val_x2], val_y), sample_weight=w,
-        callbacks=[EarlyStopping(monitor='val_loss', mode='auto', patience=earlyStop), cb_check, TerminateOnNaN()]
+        [train_x1, train_x2],
+        train_y,
+        epochs=epo,
+        shuffle=True,
+        batch_size=batch_size,
+        verbose=1,
+        validation_data=([val_x1, val_x2], val_y),
+        sample_weight=w,
+        callbacks=callbacks,
     )
 
     return model

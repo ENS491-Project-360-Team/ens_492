@@ -20,12 +20,31 @@ def main():
     parser.add_argument("--train-test-mode", type=int, default=1)
     parser.add_argument("--classification-label-column", default="synergy_binary")
     parser.add_argument("--classification-threshold", type=float, default=0.0)
+    parser.add_argument(
+        "--norm",
+        default="minmax",
+        choices=["minmax", "tanh_norm", "norm", "tanh"],
+        help="Feature scaling passed through to main.py --norm",
+    )
+    parser.add_argument(
+        "--weight-mode",
+        default="uniform",
+        choices=["uniform", "q3_upweight", "log"],
+        help="MSE sample weighting passed to main.py",
+    )
+    parser.add_argument("--weight-alpha", type=float, default=3.0)
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--input-dropout", type=float, default=0.2)
+    parser.add_argument("--dropout", type=float, default=0.5)
+    parser.add_argument("--batch-size", type=int, default=128)
+    parser.add_argument("--max-epoch", type=int, default=1000)
+    parser.add_argument("--earlystop", type=int, default=100)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     datasets = {
         "unfiltered": os.path.join(args.processed_root, "pancreatic_unfiltered.tsv"),
-        "filtered": os.path.join(args.processed_root, "pancreatic_disagreement_filtered.tsv"),
+        "filtered": os.path.join(args.processed_root, "pancreatic_variance_filtered.tsv"),
     }
     split_names = ["lto", "lpo", "lco", "lodo", "ldo"]
     rows = []
@@ -36,7 +55,7 @@ def main():
                 split_dir = os.path.join(args.splits_root, split_name, "seed_{}".format(seed))
                 outdir = os.path.join(args.out_root, dname, split_name, "seed_{}".format(seed))
                 os.makedirs(outdir, exist_ok=True)
-                saved_model = os.path.join(outdir, "matchmaker.h5")
+                # basename only — main.py joins outdir + saved-model-name
 
                 cmd = [
                     "python3", "main.py",
@@ -48,10 +67,20 @@ def main():
                     "--val-ind", os.path.join(split_dir, "val_inds.txt"),
                     "--test-ind", os.path.join(split_dir, "test_inds.txt"),
                     "--split-mode", "files",
-                    "--saved-model-name", saved_model,
+                    "--saved-model-name", "matchmaker.h5",
                     "--outdir", outdir,
                     "--gpu-devices", args.gpu_devices,
                     "--train-test-mode", str(args.train_test_mode),
+                    "--norm", args.norm,
+                    "--weight-mode", args.weight_mode,
+                    "--weight-alpha", str(args.weight_alpha),
+                    "--lr", str(args.lr),
+                    "--input-dropout", str(args.input_dropout),
+                    "--dropout", str(args.dropout),
+                    "--batch-size", str(args.batch_size),
+                    "--max-epoch", str(args.max_epoch),
+                    "--earlystop", str(args.earlystop),
+                    "--seed", str(seed),
                 ]
                 if args.dry_run:
                     print("[DRY RUN]", " ".join(cmd))

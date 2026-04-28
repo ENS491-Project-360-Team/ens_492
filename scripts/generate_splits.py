@@ -124,7 +124,7 @@ def leakage_report(df, train_idx, test_idx):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-tsv", default="data/processed/pancreatic_disagreement_filtered.tsv")
+    parser.add_argument("--input-tsv", default="data/processed/pancreatic_variance_filtered.tsv")
     parser.add_argument("--outdir", default="splits")
     parser.add_argument("--seeds", nargs="+", type=int, default=[42, 43, 44])
     parser.add_argument("--test-frac", type=float, default=0.2)
