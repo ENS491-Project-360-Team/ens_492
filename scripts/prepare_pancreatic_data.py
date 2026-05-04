@@ -1,6 +1,7 @@
 import argparse
 import os
 
+import numpy as np
 import pandas as pd
 
 
@@ -26,7 +27,12 @@ def _normalize_columns(df):
     return df
 
 
-def build_processed(raw_csv, out_dir, infer_synergy_binary_threshold=None):
+def build_processed(
+    raw_csv,
+    out_dir,
+    infer_synergy_binary_threshold=None,
+    bliss_variance_train_indices_path=None,
+):
     if not os.path.isfile(raw_csv):
         raise FileNotFoundError(
             (
@@ -107,15 +113,32 @@ def build_processed(raw_csv, out_dir, infer_synergy_binary_threshold=None):
     agg = pd.DataFrame(rows)
     agg = agg.rename(columns={"bliss": "synergy_loewe"})
 
-    med = agg["synergy_loewe"].median()
-    if pd.isna(med):
-        med = 0.0
-    agg["synergy_loewe"] = agg["synergy_loewe"].fillna(med)
-
     # IQR rule on bliss replicate variance across triplets (meeting4_dataprocessing-style; no quartile class filter).
+    # Default: quartiles computed on all aggregated rows (globally informed threshold). Optionally pass train row
+    # indices aligned with agg (same order as the written TSV) to compute quartiles only from training rows.
     vv = agg["bliss_variance"]
-    var_q1 = float(vv.quantile(0.25))
-    var_q3 = float(vv.quantile(0.75))
+    if bliss_variance_train_indices_path is not None:
+        if not os.path.isfile(bliss_variance_train_indices_path):
+            raise FileNotFoundError("bliss variance train indices file not found: {}".format(bliss_variance_train_indices_path))
+        train_ix = np.loadtxt(bliss_variance_train_indices_path, dtype=np.int64).ravel()
+        if train_ix.size == 0:
+            raise ValueError("Train indices file is empty: {}".format(bliss_variance_train_indices_path))
+        if train_ix.min() < 0 or train_ix.max() >= len(agg):
+            raise ValueError(
+                "Train indices out of range [0, {}): received min={}, max={}".format(
+                    len(agg), int(train_ix.min()), int(train_ix.max())
+                )
+            )
+        vv_ref = vv.iloc[train_ix]
+        variance_iqr_note = "`bliss_variance` IQR thresholds from **training rows only** (see `--bliss-variance-train-indices`)."
+        variance_iqr_path_note = bliss_variance_train_indices_path
+    else:
+        vv_ref = vv
+        variance_iqr_note = "`bliss_variance` IQR thresholds from **all** aggregated triplets (global; may peek at evaluation rows)."
+        variance_iqr_path_note = None
+
+    var_q1 = float(vv_ref.quantile(0.25))
+    var_q3 = float(vv_ref.quantile(0.75))
     var_iqr = var_q3 - var_q1
     variance_threshold = float(var_q3 + 1.5 * var_iqr)
     agg["high_variance_iqr"] = (vv > variance_threshold).astype(int)
@@ -149,6 +172,9 @@ def build_processed(raw_csv, out_dir, infer_synergy_binary_threshold=None):
             f.write("- No `source` column in raw file — Nature exclusion not applied.\n")
         f.write("- Aggregation key: `(sorted(drug1_id, drug2_id), cell_line)`\n")
         f.write("- Rows (unfiltered): `{}`\n".format(total))
+        f.write("- **Variance IQR**: {}\n".format(variance_iqr_note))
+        if variance_iqr_path_note is not None:
+            f.write("  - Training index file for IQR quartiles: `{}`\n".format(variance_iqr_path_note))
         f.write("- **Filtered file** `{}`: rows **not** flagged high Bliss variance (IQR rule).\n".format(os.path.basename(var_filt_path)))
         f.write("  - Bliss variance Q1={}, Q3={}, IQR={}\n".format(var_q1, var_q3, var_iqr))
         f.write("  - Threshold: Q3 + 1.5×IQR = **{}**\n".format(variance_threshold))
@@ -156,7 +182,8 @@ def build_processed(raw_csv, out_dir, infer_synergy_binary_threshold=None):
         f.write("  - Rows after variance filter: `{}`\n".format(n_var_kept))
         f.write("- Triplets with binary synergy label disagreement: `{}` (stored in column `disagreement_flag`; not used to drop rows).\n".format(dis))
         f.write("- Triplets with replicate count > 1: `{}`\n".format(rep))
-        f.write("- Regression target: `synergy_loewe` (mean bliss; missing filled with global median)\n")
+        f.write("- Regression target: `synergy_loewe` (mean bliss across replicates); NaNs kept when no finite bliss.\n")
+        f.write("  Train-time imputation: `main.py` fills non-finite labels from the **training split** median only.\n")
         f.write("- Extra columns: `bliss_variance`, `high_variance_iqr` (0/1)\n")
         f.write("- Classification target: `synergy_binary` (majority vote)\n")
 
@@ -184,11 +211,21 @@ def main():
         metavar="T",
         help="If synergy_binary column is absent, create it as (bliss > T). Omit to require synergy_binary.",
     )
+    parser.add_argument(
+        "--bliss-variance-train-indices",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Optional newline-separated integer row indices into the aggregated output (same order as the TSV) "
+            "used only to compute bliss_variance IQR quartiles/threshold; flags still apply to all rows."
+        ),
+    )
     args = parser.parse_args()
     build_processed(
         args.raw_csv,
         args.out_dir,
         infer_synergy_binary_threshold=args.infer_synergy_binary_bliss_threshold,
+        bliss_variance_train_indices_path=args.bliss_variance_train_indices,
     )
 
 

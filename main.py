@@ -24,6 +24,17 @@ def _log(msg: str) -> None:
 
     print("[matchmaker %s] %s" % (datetime.now().strftime("%H:%M:%S"), msg), flush=True)
 
+
+def impute_synergies_from_train(synergies_arr, train_idx):
+    """Replace non-finite regression labels using the median of *training* finite values only (no test/val leakage)."""
+    synergies_arr = np.asarray(synergies_arr, dtype=np.float64).copy()
+    train_idx = np.asarray(train_idx, dtype=int).ravel()
+    tr_vals = synergies_arr[train_idx]
+    fin = tr_vals[np.isfinite(tr_vals)]
+    fill = float(np.median(fin)) if fin.size else 0.0
+    synergies_arr[~np.isfinite(synergies_arr)] = fill
+    return synergies_arr
+
 # -------------------- Args --------------------
 parser = argparse.ArgumentParser(description='MatchMaker training / evaluation')
 
@@ -127,9 +138,7 @@ chem1, chem2, cell_line, synergies = MatchMaker.data_loader(
     args.drug1_chemicals, args.drug2_chemicals, args.cell_line_gex, args.comb_data_name, args.label_column
 )
 synergies = np.asarray(synergies, dtype=np.float64)
-if np.any(~np.isfinite(synergies)):
-    med = float(np.nanmedian(synergies[np.isfinite(synergies)])) if np.any(np.isfinite(synergies)) else 0.0
-    synergies = np.nan_to_num(synergies, nan=med, posinf=med, neginf=med)
+# Missing / inf labels are imputed once per split using training-set median only (see split branches / run_one_split).
 
 comb_df = pd.read_csv(args.comb_data_name, sep="\t")
 _log(
@@ -256,6 +265,7 @@ def evaluate_model(model, test_data, test_idx=None, tag=""):
 
 def run_one_split(train_idx, val_idx, test_idx, run_tag):
     print("Data normalization and preparation of train/validation/test data")
+    synergies_imp = impute_synergies_from_train(synergies, train_idx)
     # NOTE: prepare_data takes filenames in your current MatchMaker.py.
     # We will write temporary index files per run/fold to avoid editing MatchMaker.py.
     tmp_train = os.path.join(args.outdir, f"train_{run_tag}.txt")
@@ -269,7 +279,7 @@ def run_one_split(train_idx, val_idx, test_idx, run_tag):
     
 
     train_data, val_data, test_data = MatchMaker.prepare_data(
-        chem1, chem2, cell_line, synergies, norm, tmp_train, tmp_val, tmp_test
+        chem1, chem2, cell_line, synergies_imp, norm, tmp_train, tmp_val, tmp_test
     )
 
     loss_weight = make_loss_weight(
@@ -329,14 +339,17 @@ if args.split_mode == "files":
         np.savetxt(tmp_val,   tiny_val_idx,    fmt="%d")
         np.savetxt(tmp_test,  test_idx,        fmt="%d")
 
+        synergies_imp = impute_synergies_from_train(synergies, final_train_idx)
         train_data, val_data, test_data = MatchMaker.prepare_data(
-            chem1, chem2, cell_line, synergies, norm,
+            chem1, chem2, cell_line, synergies_imp, norm,
             tmp_train, tmp_val, tmp_test
         )
     else:
         _log("normalizing features (prepare_data from split index files) …")
+        train_idx_files = np.loadtxt(args.train_ind, dtype=int)
+        synergies_imp = impute_synergies_from_train(synergies, train_idx_files)
         train_data, val_data, test_data = MatchMaker.prepare_data(
-            chem1, chem2, cell_line, synergies, norm,
+            chem1, chem2, cell_line, synergies_imp, norm,
             args.train_ind, args.val_ind, args.test_ind
         )
 
