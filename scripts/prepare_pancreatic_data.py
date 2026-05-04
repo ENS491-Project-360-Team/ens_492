@@ -42,6 +42,7 @@ def build_processed(raw_csv, out_dir, infer_synergy_binary_threshold=None):
     missing = [c for c in req if c not in df.columns]
     if missing:
         raise ValueError("Missing required columns: {}".format(missing))
+    had_source = "source" in df.columns
     if "synergy_binary" not in df.columns:
         if infer_synergy_binary_threshold is None:
             raise ValueError(
@@ -50,6 +51,20 @@ def build_processed(raw_csv, out_dir, infer_synergy_binary_threshold=None):
             )
         t = infer_synergy_binary_threshold
         df["synergy_binary"] = (df["bliss"].astype(float) > t).astype(int)
+
+    n_raw = len(df)
+    n_exclude_nature = 0
+    if had_source:
+        is_nature = df["source"].astype(str).str.strip() == "Nature"
+        n_exclude_nature = int(is_nature.sum())
+        df = df.loc[~is_nature].copy()
+        print(
+            "Excluded rows with source='Nature': {} ({} raw rows before → {} after).".format(
+                n_exclude_nature, n_raw, len(df)
+            )
+        )
+    if len(df) == 0:
+        raise ValueError("No rows left after excluding source='Nature'; check the raw CSV.")
 
     p1, p2 = canonical_pair(df)
     df["pair_id_1"] = p1
@@ -124,6 +139,14 @@ def build_processed(raw_csv, out_dir, infer_synergy_binary_threshold=None):
     with open(card_path, "w", encoding="utf-8") as f:
         f.write("# Pancreatic processed data card\n\n")
         f.write("- Raw input: `{}`\n".format(raw_csv))
+        if had_source:
+            f.write(
+                "- Excluded **{}** raw rows with `source == Nature` (before aggregation).\n".format(
+                    n_exclude_nature
+                )
+            )
+        else:
+            f.write("- No `source` column in raw file — Nature exclusion not applied.\n")
         f.write("- Aggregation key: `(sorted(drug1_id, drug2_id), cell_line)`\n")
         f.write("- Rows (unfiltered): `{}`\n".format(total))
         f.write("- **Filtered file** `{}`: rows **not** flagged high Bliss variance (IQR rule).\n".format(os.path.basename(var_filt_path)))
