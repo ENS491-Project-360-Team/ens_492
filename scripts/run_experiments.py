@@ -1,12 +1,17 @@
 import argparse
 import os
 import subprocess
+import sys
+
 import pandas as pd
+
+# Line-buffer child Python so notebook/subprocess users see Keras epoch logs immediately (no TTY).
+_UNBUF_ENV = {**os.environ, "PYTHONUNBUFFERED": "1"}
 
 
 def run_cmd(cmd, cwd):
-    print("Running:", " ".join(cmd))
-    subprocess.run(cmd, cwd=cwd, check=True)
+    print("Running:", " ".join(cmd), flush=True)
+    subprocess.run(cmd, cwd=cwd, check=True, env=_UNBUF_ENV)
 
 
 def main():
@@ -58,7 +63,9 @@ def main():
                 # basename only — main.py joins outdir + saved-model-name
 
                 cmd = [
-                    "python3", "main.py",
+                    sys.executable,
+                    "-u",
+                    "main.py",
                     "--comb-data-name", dpath,
                     "--label-column", "synergy_loewe",
                     "--classification-label-column", args.classification_label_column,
