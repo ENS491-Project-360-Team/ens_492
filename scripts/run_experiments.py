@@ -54,12 +54,22 @@ def main():
     split_names = ["lto", "lpo", "lco", "lodo", "ldo"]
     rows = []
 
+    n_total = len(datasets) * len(split_names) * len(args.seeds)
+    run_i = 0
+
     for dname, dpath in datasets.items():
         for split_name in split_names:
             for seed in args.seeds:
+                run_i += 1
                 split_dir = os.path.join(args.splits_root, split_name, "seed_{}".format(seed))
                 outdir = os.path.join(args.out_root, dname, split_name, "seed_{}".format(seed))
                 os.makedirs(outdir, exist_ok=True)
+                print(
+                    ">>> run_experiments ({}/{})  dataset={}  split={}  seed={}".format(
+                        run_i, n_total, dname, split_name, seed
+                    ),
+                    flush=True,
+                )
                 # basename only — main.py joins outdir + saved-model-name
 
                 cmd = [

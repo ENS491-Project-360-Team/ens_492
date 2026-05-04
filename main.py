@@ -17,6 +17,13 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
 
+
+def _log(msg: str) -> None:
+    """Timestamped, flushed log line for notebooks / non-TTY subprocess output."""
+    from datetime import datetime
+
+    print("[matchmaker %s] %s" % (datetime.now().strftime("%H:%M:%S"), msg), flush=True)
+
 # -------------------- Args --------------------
 parser = argparse.ArgumentParser(description='MatchMaker training / evaluation')
 
@@ -80,6 +87,8 @@ parser.add_argument('--wandb-run-name', default=None)
 
 args = parser.parse_args()
 
+_log("start main.py — comb_data=%r outdir=%r seed=%s" % (args.comb_data_name, args.outdir, args.seed))
+
 os.environ["PYTHONHASHSEED"] = str(args.seed)
 random.seed(args.seed)
 np.random.seed(args.seed)
@@ -104,9 +113,15 @@ tf.compat.v1.ConfigProto(
     device_count={'CPU': num_CPU, 'GPU': num_GPU}
 )
 
+_log(
+    "TensorFlow %s | CUDA_VISIBLE_DEVICES=%s | gpu_support=%s"
+    % (tf.__version__, os.environ.get("CUDA_VISIBLE_DEVICES", ""), args.gpu_support)
+)
+
 os.makedirs(args.outdir, exist_ok=True)
 
 # -------------------- Load data --------------------
+_log("loading drug/cell features + combination table (I/O can take minutes on large files) …")
 print("File reading ...")
 chem1, chem2, cell_line, synergies = MatchMaker.data_loader(
     args.drug1_chemicals, args.drug2_chemicals, args.cell_line_gex, args.comb_data_name, args.label_column
@@ -117,6 +132,10 @@ if np.any(~np.isfinite(synergies)):
     synergies = np.nan_to_num(synergies, nan=med, posinf=med, neginf=med)
 
 comb_df = pd.read_csv(args.comb_data_name, sep="\t")
+_log(
+    "arrays ready: synergies N=%d chem1=%s chem2=%s cell=%s"
+    % (len(synergies), chem1.shape, chem2.shape, cell_line.shape)
+)
 class_labels = None
 if args.classification_label_column:
     if args.classification_label_column not in comb_df.columns:
@@ -135,6 +154,8 @@ layers = {
     'DSN_2': architecture['DSN_2'][0],
     'SPN': architecture['SPN'][0],
 }
+
+_log("architecture from %r: DSN_1=%s DSN_2=%s SPN=%s" % (args.arch, layers["DSN_1"], layers["DSN_2"], layers["SPN"]))
 
 l_rate = args.lr
 inDrop = args.input_dropout
@@ -258,6 +279,7 @@ def run_one_split(train_idx, val_idx, test_idx, run_tag):
     model_path = os.path.join(args.outdir, "{}_{}".format(run_tag, args.saved_model_name))
 
     if args.train_test_mode == 1:
+        _log("training run_tag=%s (Keras fit) …" % run_tag)
         model = MatchMaker.trainer(
             model, l_rate, train_data, val_data,
             max_epoch, batch_size, earlyStop_patience,
@@ -312,6 +334,7 @@ if args.split_mode == "files":
             tmp_train, tmp_val, tmp_test
         )
     else:
+        _log("normalizing features (prepare_data from split index files) …")
         train_data, val_data, test_data = MatchMaker.prepare_data(
             chem1, chem2, cell_line, synergies, norm,
             args.train_ind, args.val_ind, args.test_ind
@@ -319,10 +342,12 @@ if args.split_mode == "files":
 
     loss_weight = make_loss_weight(
         train_data['y'], mode=args.weight_mode, alpha=args.weight_alpha)
+    _log("building Keras model …")
     model = MatchMaker.generate_network(train_data, layers, inDrop, drop)
     model_path = os.path.join(args.outdir, args.saved_model_name)
 
     if args.train_test_mode == 1:
+        _log("training (Keras fit — first epoch may compile the graph / warm up GPU) …")
         model = MatchMaker.trainer(
             model, l_rate, train_data, val_data,
             max_epoch, batch_size, earlyStop_patience,

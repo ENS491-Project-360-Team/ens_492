@@ -203,6 +203,11 @@ def trainer(model, l_rate, train, val, epo, batch_size, earlyStop, modelName, we
             learning_rate=float(l_rate), beta_1=0.9, beta_2=0.999, amsgrad=False, clipnorm=1.0
         ),
     )
+    print(
+        "[matchmaker] Keras fit: epochs=%d batch_size=%d early_stop_patience=%d (epoch 01 may be slow on first GPU run)"
+        % (epo, batch_size, earlyStop),
+        flush=True,
+    )
     model.fit(
         [train_x1, train_x2],
         train_y,
